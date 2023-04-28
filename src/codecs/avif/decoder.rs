@@ -35,22 +35,28 @@ impl<R: Read> AvifDecoder<R> {
     pub fn new(mut r: R) -> ImageResult<Self> {
         let ctx = read_avif(&mut r, ParseStrictness::Normal).map_err(error_map)?;
         let mut primary_decoder = dav1d::Decoder::new();
-        let coded = ctx.primary_item_coded_data();
+        let coded = ctx.primary_item_coded_data().unwrap();
         primary_decoder
             .send_data(coded, None, None, None)
             .map_err(error_map)?;
         let picture = primary_decoder.get_picture().map_err(error_map)?;
         let alpha_item = ctx.alpha_item_coded_data();
-        let alpha_picture = if !alpha_item.is_empty() {
-            let mut alpha_decoder = dav1d::Decoder::new();
-            alpha_decoder
-                .send_data(alpha_item, None, None, None)
-                .map_err(error_map)?;
-            Some(alpha_decoder.get_picture().map_err(error_map)?)
-        } else {
-            None
+        let alpha_picture =  match alpha_item {
+            Some(alpha_item) => {
+                if !alpha_item.is_empty() {
+                    let mut alpha_decoder = dav1d::Decoder::new();
+                    alpha_decoder
+                        .send_data(alpha_item, None, None, None)
+                        .map_err(error_map)?;
+                    Some(alpha_decoder.get_picture().map_err(error_map)?)
+                } else {
+                    None
+                }
+            },
+            None => None
         };
-        let icc_profile = ctx.icc_colour_information().ok().map(|x| x.to_vec());
+
+        let icc_profile = ctx.icc_colour_information().unwrap().ok().map(|x| x.to_vec());
         assert_eq!(picture.bit_depth(), 8);
         Ok(AvifDecoder {
             inner: PhantomData,
